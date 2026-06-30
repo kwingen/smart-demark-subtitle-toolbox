@@ -74,7 +74,7 @@ CONFIG_FILE = BASE_DIR / "config.json"
 
 DEFAULT_TOOL_PATHS = {
     "lada": "D:/soft/lada-v0.11.0/lada-cli.exe",
-    "jasna": "D:/soft/jasna-v0.5.1/jasna-cli.exe",
+    "jasna": "D:/soft/jasna-v0.7.2/jasna.exe",
     "ffmpeg": "D:/soft/ffmpeg-8.0-full_build/bin/ffmpeg.exe",
     "mkvmerge": "D:/soft/mkvtoolnix/mkvmerge.exe",
     "whisper": "E:/faster_whisper_transwithai_windows_cu122-chickenrice.zip/infer.exe"
@@ -96,8 +96,13 @@ def check_tool_ready(exe_path_str):
         exe_path = Path(exe_path_str)
         if not exe_path.exists():
             return False, "文件不存在"
+        # jasna v0.7.2+ 无命令行参数会启动 GUI，加 --version 避免弹窗
+        cmd = [str(exe_path)]
+        stem = exe_path.stem.lower()
+        if stem == 'jasna':
+            cmd.append('--version')
         r = subprocess.run(
-            [str(exe_path)],
+            cmd,
             capture_output=True, text=True,
             encoding='utf-8', errors='replace',
             timeout=5
@@ -417,8 +422,8 @@ class WorkerThread(QThread):
             cmd = [jasna_exe, "--input", str(input_path), "--output", output_file, "--fp16"]
             jp = self.config.get('jasna_params', {})
             if jp.get('device'): cmd.extend(["--device", jp['device']])
-            # 检测模型 --detection-model (default: rfdetr-V5)
-            det = jp.get('detection_model', 'rfdetr-V5')
+            # 检测模型 --detection-model (default: rfdetr-v5)
+            det = jp.get('detection_model', 'rfdetr-v5')
             if det and det.lower() != 'none': cmd.extend(["--detection-model", det])
             # 检测阈值 --detection-score-threshold
             thresh = jp.get('detection_threshold', 0.25)
@@ -850,8 +855,10 @@ class ParamDialog(QDialog):
                 "fp16": self.jasna_fp16.isChecked(),
                 "temporal_overlap": self.jasna_overlap.value(),
                 "fade": self.jasna_fade.isChecked(),
-                "denoise_strength": self.jasna_denoise.currentText(),
-                "denoise_timing": self.jasna_denoise_timing.currentText(),
+                "denoise_strength": {"无":"none","低":"low","中":"medium","高":"high"}.get(
+                    self.jasna_denoise.currentText(), "medium"),
+                "denoise_timing": {"主修复后":"after_primary","主修复前":"after_primary","同步":"after_secondary"}.get(
+                    self.jasna_denoise_timing.currentText(), "after_primary"),
                 "secondary_restoration": self.jasna_secondary.currentText(),
                 "secondary_scale": int(self.jasna_sec_scale.currentText().replace("x","")),
                 "secondary_quality": self.jasna_sec_quality.currentText().lower(),
@@ -960,10 +967,10 @@ class ParamDialog(QDialog):
 
         # 1. GPU 设备
         self.jasna_device = QLineEdit(jp.get("device","cuda:0")); form.addRow("GPU 设备:", self.jasna_device)
-        # 2. 检测模型 默认rfdetr-V5
+        # 2. 检测模型 默认rfdetr-v5（v0.7.2 新增 lada-YOLO 支持）
         self.jasna_det_model = QComboBox()
-        self.jasna_det_model.addItems(["rfdetr-V5","rfdetr-V4","rfdetr-V3","none"])
-        self.jasna_det_model.setCurrentText(jp.get("detection_model","rfdetr-V5")); form.addRow("检测模型:", self.jasna_det_model)
+        self.jasna_det_model.addItems(["rfdetr-v5","rfdetr-v4","rfdetr-v3","lada-YOLO-v4","lada-YOLO-v5","none"])
+        self.jasna_det_model.setCurrentText(jp.get("detection_model","rfdetr-v5")); form.addRow("检测模型:", self.jasna_det_model)
         # 3. 检测阈值 默认0.25
         self.jasna_det_thresh = QLineEdit(str(jp.get("detection_threshold",0.25)))
         self.jasna_det_thresh.setFixedWidth(60); form.addRow("检测阈值:", self.jasna_det_thresh)
@@ -1300,7 +1307,7 @@ class MainWindow(QMainWindow):
             # JASNA 参数
             "jasna_params": {
                 "device": "cuda:0",
-                "detection_model": "rfdetr-V5",
+                "detection_model": "rfdetr-v5",
                 "detection_threshold": 0.25,
                 "max_clip_size": 90,
                 "fp16": True,

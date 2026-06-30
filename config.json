@@ -19,7 +19,7 @@
   },
   "jasna_params": {
     "device": "cuda:0",
-    "detection_model": "rfdetr-V5",
+    "detection_model": "rfdetr-v5",
     "detection_threshold": 0.25,
     "max_clip_size": 60,
     "fp16": true,
@@ -91,7 +91,7 @@
   ],
   "tool_paths": {
     "lada": "D:/aiunseed/lada/lada-cli.exe",
-    "jasna": "D:/aiunseed/jasna-v0.5.1/jasna-cli.exe",
+    "jasna": "D:/aiunseed/jasna-v0.7.2/jasna.exe",
     "ffmpeg": "D:/aiunseed/ffmpeg-master-latest-win64-gpl-shared/bin/ffmpeg.exe",
     "mkvmerge": "D:/aiunseed/mkvtoolnix/mkvmerge.exe",
     "whisper": "D:/aiunseed/faster_whisper_transwithai_windows_cu128-translate.zip/infer.exe"
