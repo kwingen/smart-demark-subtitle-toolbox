@@ -1,0 +1,99 @@
+{
+  "input_dir": "D:/aiunseed/input",
+  "output_dir": "D:/aiunseed/output",
+  "demark_engine": "jasna",
+  "compose_engine": "ffmpeg",
+  "language": "auto",
+  "do_demark": true,
+  "do_subtitle": true,
+  "do_compose": false,
+  "lada_params": {
+    "device": "cuda:0",
+    "detection_model": "v4-fast",
+    "model": "basicvsrpp-v1.2",
+    "face_detection": false,
+    "tile_size": 60,
+    "fp16": true,
+    "preset": "hevc-nvidia-gpu-hq",
+    "extra_args": ""
+  },
+  "jasna_params": {
+    "device": "cuda:0",
+    "detection_model": "rfdetr-V5",
+    "detection_threshold": 0.25,
+    "max_clip_size": 60,
+    "fp16": true,
+    "temporal_overlap": 8,
+    "fade": true,
+    "denoise_strength": "中",
+    "denoise_timing": "主修复后",
+    "secondary_restoration": "RTX Super RES",
+    "secondary_scale": 4,
+    "secondary_quality": "high",
+    "secondary_denoise": "medium",
+    "secondary_deblur": "none",
+    "codec": "hevc",
+    "cq": 22
+  },
+  "whisper_params": {
+    "device": "cuda",
+    "compute_type": "float16",
+    "model": "models",
+    "task": "translate",
+    "language": "ja",
+    "vad": true,
+    "vad_threshold": 0.5,
+    "merge_enabled": true,
+    "merge_max_gap_ms": 2000,
+    "merge_max_duration_ms": 20000,
+    "batch_size": 8,
+    "beam_size": 5,
+    "repetition_penalty": 1.1,
+    "log_level": "INFO"
+  },
+  "ffmpeg_params": {
+    "vcodec": "copy",
+    "acodec": "copy",
+    "scodec": "mov_text",
+    "pix_fmt": "",
+    "preset": "",
+    "crf": "",
+    "bitrate": "",
+    "faststart": true,
+    "extra_args": "",
+    "subtitle_font": "Microsoft YaHei",
+    "subtitle_fontsize": 18,
+    "subtitle_color": "white",
+    "subtitle_position": "bottom",
+    "subtitle_margin_v": 30,
+    "subtitle_margin_b": 10,
+    "subtitle_border": 1,
+    "subtitle_outline": 1
+  },
+  "mkv_params": {
+    "track_lang": "chi",
+    "default_track": true,
+    "forced_track": false,
+    "compression": "none",
+    "track_name": "",
+    "extra_args": ""
+  },
+  "gpu_config": {
+    "mode": "8g_serial",
+    "mode_index": 0,
+    "temp_limit": 85,
+    "safety_margin_mb": 768,
+    "temp_cooldown": 60
+  },
+  "whisper_model": "large-v2",
+  "input_files": [
+    "D:/aiunseed/input/hhd800.com@START-243.mp4"
+  ],
+  "tool_paths": {
+    "lada": "D:/aiunseed/lada/lada-cli.exe",
+    "jasna": "D:/aiunseed/jasna-v0.5.1/jasna-cli.exe",
+    "ffmpeg": "D:/aiunseed/ffmpeg-master-latest-win64-gpl-shared/bin/ffmpeg.exe",
+    "mkvmerge": "D:/aiunseed/mkvtoolnix/mkvmerge.exe",
+    "whisper": "D:/aiunseed/faster_whisper_transwithai_windows_cu128-translate.zip/infer.exe"
+  }
+}
