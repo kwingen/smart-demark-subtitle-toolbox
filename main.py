@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-智能去码字幕工具箱 v1.2
+智能去码字幕工具箱 v1.3
 功能：视频去码（LADA / JASNA）、字幕生成（Faster-Whisper）、字幕合成（FFmpeg / MKVToolNix）
 """
 
@@ -1342,7 +1342,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         # 初始化文件日志
         log_path = setup_file_logging()
-        console_print("智能去码字幕工具箱 v1.2 - 处理进度将显示在此窗口")
+        console_print("智能去码字幕工具箱 v1.3 - 处理进度将显示在此窗口")
         console_print(f"日志文件: {log_path}")
         console_print("=" * 55)
         self.config = self.load_config()
@@ -1484,7 +1484,7 @@ class MainWindow(QMainWindow):
 
     # ─── 界面构建 ───
     def init_ui(self):
-        self.setWindowTitle("智能去码字幕工具箱 v1.2")
+        self.setWindowTitle("智能去码字幕工具箱 v1.3")
         self.setGeometry(200, 100, 1200, 800)
         self.setMinimumSize(1000, 650)
 
@@ -1591,7 +1591,7 @@ class MainWindow(QMainWindow):
     def _build_title_bar(self):
         """构建标题栏 + 5个工具状态按钮"""
         layout = QHBoxLayout()
-        title = QLabel("🎬 智能去码字幕工具箱 v1.2")
+        title = QLabel("🎬 智能去码字幕工具箱 v1.3")
         title.setFont(QFont("Microsoft YaHei", 18, QFont.Weight.Bold))
         title.setStyleSheet("color: #2c3e50;")
         layout.addWidget(title)
