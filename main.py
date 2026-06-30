@@ -96,7 +96,7 @@ try:
         QRadioButton, QButtonGroup, QSplitter, QFrame, QScrollArea,
         QTabWidget, QDialog, QDialogButtonBox
     )
-    from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer
+    from PyQt6.QtCore import Qt, QThread, pyqtSignal, QTimer, QEvent
     from PyQt6.QtGui import QFont, QColor, QPalette
 except ImportError:
     print("错误：需要安装 PyQt6")
@@ -908,6 +908,16 @@ class ParamDialog(QDialog):
         btn_box.accepted.connect(self.accept)
         btn_box.rejected.connect(self.reject)
         layout.addWidget(btn_box)
+
+        # 禁用所有 QComboBox 的滚轮切换，避免鼠标划过时误操作
+        for combo in self.findChildren(QComboBox):
+            combo.installEventFilter(self)
+
+    def eventFilter(self, obj, event):
+        """拦截 QComboBox 的滚轮事件，防止误触切换选项"""
+        if event.type() == QEvent.Type.Wheel and isinstance(obj, QComboBox):
+            return True  # 吞掉滚轮事件
+        return super().eventFilter(obj, event)
 
     def get_params(self):
         """返回更新后的参数字典"""
