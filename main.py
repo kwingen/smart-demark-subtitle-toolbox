@@ -43,6 +43,42 @@ def _get_process_encoding():
 
 _PROCESS_ENCODING = _get_process_encoding()
 
+# ─── 文件日志模块（持久化到 logs/ 目录，按日期轮转）───
+import logging
+import logging.handlers
+
+_log_file_handle = None  # 全局文件句柄，MainWindow 和 WorkerThread 共享
+
+def setup_file_logging():
+    """初始化文件日志：logs/toolbox_YYYYMMDD.log，UTF-8，自动轮转"""
+    global _log_file_handle
+    log_dir = Path(__file__).parent / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"toolbox_{datetime.now().strftime('%Y%m%d')}.log"
+    _log_file_handle = open(str(log_path), 'a', encoding='utf-8', buffering=1)  # 行缓冲
+    return str(log_path)
+
+def file_log(msg: str):
+    """同时写入 GUI（通过 log_signal）和文件"""
+    ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}\n"
+    if _log_file_handle:
+        try:
+            _log_file_handle.write(line)
+            _log_file_handle.flush()
+        except Exception:
+            pass  # 文件写入失败不影响主流程
+
+def close_file_logging():
+    """关闭日志文件句柄"""
+    global _log_file_handle
+    if _log_file_handle:
+        try:
+            _log_file_handle.close()
+        except Exception:
+            pass
+        _log_file_handle = None
+
 def console_print(text="", end="\n", flush=False):
     """输出到控制台（控制台已强制 UTF-8，直接写 UTF-8 字节）"""
     try:
@@ -140,9 +176,10 @@ class WorkerThread(QThread):
         self.gpu_temp_limit = self.gpu_config.get("temp_limit", 85)
         self.gpu_cooldown = self.gpu_config.get("temp_cooldown", 60)
 
-    def log(self, msg):
+    def log(self, msg, **kwargs):
         if self.running:
             self.log_signal.emit(msg)
+            file_log(msg)  # 直接写文件，避免信号丢失
 
     def _wait_for_gpu(self, label="GPU 操作"):
         """等待显存足够，返回 True=可以继续, False=被停止"""
@@ -292,8 +329,10 @@ class WorkerThread(QThread):
     def _process_one_file(self, file_idx, total_files, input_file, output_dir,
                           do_demark, do_subtitle, do_compose):
         """处理单个文件：去码 → 字幕 → 合成（含 GPU 等待/降温+断点续传）"""
+        file_start = time.time()
         self.log(f"\n{'='*50}")
         self.log(f"处理文件 [{file_idx+1}/{total_files}]: {Path(input_file).name}")
+        self.log(f"开始时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         self.log(f"{'='*50}")
 
         name = Path(input_file).stem
@@ -314,6 +353,7 @@ class WorkerThread(QThread):
                 self.log(f"  ↪ 去码输出已存在，跳过: {name}-U.mp4")
                 current_video = demark_out
             else:
+                step_start = time.time()
                 self.log(f"\n▶ 步骤1/3: 去码处理")
                 self._cool_down()
                 if not self._wait_for_gpu("去码"):
@@ -322,10 +362,12 @@ class WorkerThread(QThread):
                     self.file_status_signal.emit(file_idx, "demarking")
                     self.log("  🛠️ 开始去码（工具锁已获取）")
                     demark_output = self._run_demark(input_file, output_dir)
+                step_elapsed = time.time() - step_start
                 if not demark_output:
-                    self.log(f"  ✗ 去码失败: {Path(input_file).name}")
+                    self.log(f"  ✗ 去码失败: {Path(input_file).name} (耗时 {step_elapsed:.1f}s)")
                     self.file_status_signal.emit(file_idx, "failed")
                     return False
+                self.log(f"  ✓ 去码完成 (耗时 {step_elapsed:.1f}s)")
                 current_video = demark_output
 
         # ── 步骤2：生成字幕 ──
@@ -343,6 +385,7 @@ class WorkerThread(QThread):
                 self.log(f"  ↪ 字幕已存在，跳过: {srt_path.name}")
                 subtitle_file = str(srt_path)
             else:
+                step_start = time.time()
                 self.log(f"\n▶ 步骤2/3: 生成字幕")
                 self._cool_down()
                 if not self._wait_for_gpu("字幕生成"):
@@ -351,10 +394,12 @@ class WorkerThread(QThread):
                     self.file_status_signal.emit(file_idx, "subtitling")
                     self.log("  🛠️ 开始字幕生成（工具锁已获取）")
                     subtitle_file = self._run_whisper(current_video, output_dir)
+                step_elapsed = time.time() - step_start
                 if not subtitle_file:
-                    self.log(f"  ✗ 字幕生成失败: {Path(input_file).name}")
+                    self.log(f"  ✗ 字幕生成失败: {Path(input_file).name} (耗时 {step_elapsed:.1f}s)")
                     self.file_status_signal.emit(file_idx, "failed")
                     return False
+                self.log(f"  ✓ 字幕生成完成 (耗时 {step_elapsed:.1f}s)")
 
         # ── 步骤3：合成字幕 ──
         if do_compose and self.running:
@@ -363,6 +408,7 @@ class WorkerThread(QThread):
             if (output_dir / out_name).exists():
                 self.log(f"  ↪ 合成输出已存在，跳过: {out_name}")
             else:
+                step_start = time.time()
                 self.log(f"\n▶ 步骤3/3: 合成字幕")
                 if not subtitle_file:
                     subtitle_file = self._find_subtitle(output_dir, Path(current_video).stem)
@@ -374,13 +420,17 @@ class WorkerThread(QThread):
                         self.file_status_signal.emit(file_idx, "composing")
                         self.log("  🛠️ 开始合成（工具锁已获取）")
                         result = self._run_compose(current_video, subtitle_file, output_dir)
+                    step_elapsed = time.time() - step_start
                     if not result:
-                        self.log(f"  ✗ 合成失败: {Path(input_file).name}")
+                        self.log(f"  ✗ 合成失败: {Path(input_file).name} (耗时 {step_elapsed:.1f}s)")
                         self.file_status_signal.emit(file_idx, "failed")
                         return False
+                    self.log(f"  ✓ 合成完成 (耗时 {step_elapsed:.1f}s)")
                 else:
                     self.log("⚠ 未找到字幕文件，跳过合成")
 
+        file_elapsed = time.time() - file_start
+        self.log(f"  📊 文件总耗时: {file_elapsed:.1f}s ({file_elapsed/60:.1f}min)")
         self.file_status_signal.emit(file_idx, "done")
         return True
 
@@ -466,15 +516,22 @@ class WorkerThread(QThread):
             self.log("  错误: 未知引擎")
             return None
 
-        self.log(f"  命令: {Path(cmd[0]).name} [参数]")
+        self.log(f"  完整命令: {' '.join(cmd)}")
         self.log(f"  输出: {output_file}")
         process = self._run_process(cmd, "去码", 0, capture_stdout=False, cwd=cwd)
-        if process and process.returncode == 0:
-            self.log("  ✓ 去码完成")
-            if Path(output_file).exists():
-                return output_file
-            return output_file
-        self.log("  ✗ 去码异常退出")
+        if process:
+            rc = process.returncode
+            self.log(f"  退出码: {rc}")
+            if rc == 0:
+                self.log("  ✓ 去码完成")
+                if Path(output_file).exists():
+                    return output_file
+                self.log(f"  ⚠ 去码完成但输出文件不存在: {output_file}")
+                return None
+            else:
+                self.log(f"  ✗ 去码异常退出 (退出码={rc})")
+        else:
+            self.log("  ✗ 去码进程启动失败或已停止")
         return None
 
     # ─── Whisper 字幕生成 ───
@@ -503,11 +560,18 @@ class WorkerThread(QThread):
             str(input_file)
         ]
         self.log(f"  模型: {model_path}")
-        self.log(f"  命令: infer.exe [参数] {Path(input_file).name}")
+        self.log(f"  完整命令: {' '.join(cmd)}")
         process = self._run_process(cmd, "Whisper", 0)
-        if process and process.returncode == 0:
-            self.log("  ✓ 字幕生成完成")
-            return self._find_subtitle(output_dir, Path(input_file).stem)
+        if process:
+            rc = process.returncode
+            self.log(f"  退出码: {rc}")
+            if rc == 0:
+                self.log("  ✓ 字幕生成完成")
+                return self._find_subtitle(output_dir, Path(input_file).stem)
+            else:
+                self.log(f"  ✗ 字幕生成失败 (退出码={rc})")
+        else:
+            self.log("  ✗ 字幕进程启动失败或已停止")
         self.log("  ⚠ 将在输出目录查找字幕")
         return self._find_subtitle(output_dir, Path(input_file).stem)
 
@@ -592,13 +656,20 @@ class WorkerThread(QThread):
             self.log("  错误: 未知合成引擎")
             return None
 
-        self.log(f"  命令: {Path(exe).name} [参数]")
+        self.log(f"  完整命令: {' '.join(cmd)}")
         self.log(f"  输出: {output_file}")
         cwd_param = locals().get('compose_cwd') if engine == 'ffmpeg' else None
         process = self._run_process(cmd, "合成", 0, cwd=cwd_param)
-        if process and process.returncode == 0:
-            self.log(f"  ✓ 合成完成: {output_file}")
-            return output_file
+        if process:
+            rc = process.returncode
+            self.log(f"  退出码: {rc}")
+            if rc == 0:
+                self.log(f"  ✓ 合成完成: {output_file}")
+                return output_file
+            else:
+                self.log(f"  ✗ 合成失败 (退出码={rc})")
+        else:
+            self.log("  ✗ 合成进程启动失败或已停止")
         return None
 
     # ─── 工具函数 ───
@@ -690,14 +761,15 @@ class WorkerThread(QThread):
                 while progress_buf:
                     line_text, terminator = progress_buf.pop(0)
                     if capture_stdout:
-                        self.log(f"  [{label}] {line_text[:200]}")  # GUI 日志
+                        self.log(f"  [{label}] {line_text}")  # 完整输出，不截断
                         if terminator == b'\n':
                             console_print(line_text, flush=True)
                         else:
-                            console_print(f"\r{line_text}", end='', flush=True)
+                            console_print("\r" + line_text, end='', flush=True)
                     else:
-                        # LADA/JASNA：仅控制台进度
-                        console_print(f"\r{line_text}", end='', flush=True)
+                        # LADA/JASNA：进度行在文件日志记录
+                        file_log(f"  [{label}] {line_text}")
+                        console_print("\r" + line_text, end='', flush=True)
 
                 if process.poll() is not None:
                     break
@@ -719,7 +791,10 @@ class WorkerThread(QThread):
             return None
         except Exception as e:
             console_print("\r                                                                                                \r", end='')
+            import traceback
+            tb = traceback.format_exc()
             self.log(f"  ✗ {label}异常: {str(e)}")
+            self.log(f"  调用栈:\n{tb}")
             return None
 
     def _find_subtitle(self, output_dir, video_stem):
@@ -1255,7 +1330,10 @@ class ParamDialog(QDialog):
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
+        # 初始化文件日志
+        log_path = setup_file_logging()
         console_print("智能去码字幕工具箱 v1.2 - 处理进度将显示在此窗口")
+        console_print(f"日志文件: {log_path}")
         console_print("=" * 55)
         self.config = self.load_config()
         self.tool_paths = self.config.get("tool_paths", dict(DEFAULT_TOOL_PATHS))
@@ -2078,6 +2156,8 @@ class MainWindow(QMainWindow):
         self.log_text.append(line)
         scrollbar = self.log_text.verticalScrollBar()
         scrollbar.setValue(scrollbar.maximum())
+        # 同时写入文件日志
+        file_log(msg)
 
     def clear_log(self):
         self.log_text.clear()
@@ -2223,6 +2303,7 @@ class MainWindow(QMainWindow):
             self.worker.running = False
             self.worker.wait(3000)
         self.save_config()
+        close_file_logging()
         event.accept()
         # 等 closeEvent 返回后再退出，避免 QThreadStorage 警告
         QTimer.singleShot(0, QApplication.quit)
